@@ -1,0 +1,13 @@
+{
+    "name": "@andre-hctulc/njses-aws-s3",
+    "version": "0.0.1",
+    "description": "",
+    "main": "dist/index.js",
+    "scripts": {
+        "tc": "tsc --noEmit",
+        "build": "tsc",
+        "watch": "tsc -w"
+    },
+    "author": "André Thomas",
+    "license": "ISC"
+}
