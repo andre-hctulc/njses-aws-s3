@@ -17,27 +17,9 @@ import {
     S3Client,
     S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import { Readable } from "stream";
-
-async function streamToString(stream: Readable): Promise<string> {
-    return await new Promise((resolve, reject) => {
-        const chunks: Uint8Array[] = [];
-        stream.on("data", (chunk) => chunks.push(chunk));
-        stream.on("error", reject);
-        stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-    });
-}
-
-function serializeMetadata(metadata: Record<string, any>): Record<string, string> {
-    if (!metadata || typeof metadata !== "object") return {};
-    return Object.entries(metadata || {}).reduce((acc, [key, value]) => {
-        if (value === undefined) return acc;
-        acc[key] = value.toString();
-        return acc;
-    }, {} as Record<string, string>);
-}
-
-type ResponseMetadata<M extends object> = { [K in keyof M]?: string };
+import type { Readable } from "stream";
+import { Service } from "../../njses/src/decorators";
+import { blobToReadable, streamToString } from "./utils";
 
 interface FetchHeadsOptions {
     marker?: string;
@@ -47,20 +29,22 @@ interface FetchHeadsOptions {
 
 type GetObjectCommandOutputBody = Exclude<GetObjectCommandOutput["Body"], undefined> | null;
 
-type S3ConnectionConfig<M extends object = Record<string, string>> = {
+export type Metadata = Record<string, string>;
+export type ObjectData = string | Buffer | Uint8Array | Readable | ArrayBuffer | Blob;
+
+export type AWSS3BucketConfig<M extends Metadata = Metadata> = {
     client: S3ClientConfig | S3Client;
-    mergeMetadata?: (m1: ResponseMetadata<M>, m2: ResponseMetadata<M>) => M;
+    /** @default { ...metadata1, ...metadata2 } */
+    mergeMetadata?: (metadata1: M, metadata2: Partial<M>) => M;
 };
 
-/**
- * @template M Metadata
- */
-export class S3Connection<M extends object = Record<string, string>> {
+@Service({ name: "$$aws_s3_bucket" })
+export class AWSS3Bucket<M extends Metadata = Metadata> {
     readonly bucketName: string;
     private _client: S3Client;
-    private _config: S3ConnectionConfig<M>;
+    private _config: AWSS3BucketConfig<M>;
 
-    constructor(bucketName: string, config: S3ConnectionConfig<M>) {
+    constructor(bucketName: string, config: AWSS3BucketConfig<M>) {
         this.bucketName = bucketName;
         this._config = config;
         this._client = config.client instanceof S3Client ? config.client : new S3Client(config.client);
@@ -98,11 +82,13 @@ export class S3Connection<M extends object = Record<string, string>> {
         return this._client.send(command);
     }
 
-    async put(key: string, data: string | Buffer | Uint8Array | Readable) {
-        await this.putRaw(key, { Body: data });
+    async put(key: string, data: ObjectData) {
+        if (data instanceof ArrayBuffer) data = Buffer.from(data);
+        else if (data instanceof Blob) data = await blobToReadable(data);
+        await this.putRaw(key, { Body: data as any });
     }
 
-    async delRaw(key: string) {
+    async deleteRaw(key: string) {
         const command = new DeleteObjectCommand({
             Bucket: this.bucketName,
             Key: key,
@@ -110,8 +96,8 @@ export class S3Connection<M extends object = Record<string, string>> {
         return this._client.send(command);
     }
 
-    async del(key: string) {
-        await this.delRaw(key);
+    async delete(key: string) {
+        await this.deleteRaw(key);
     }
 
     async copyRaw(oldKey: string, newKey: string, params?: Partial<CopyObjectCommandInput>) {
@@ -128,7 +114,7 @@ export class S3Connection<M extends object = Record<string, string>> {
     async rename(oldKey: string, newKey: string) {
         if (oldKey === newKey) return;
         await this.copyRaw(oldKey, newKey);
-        await this.delRaw(oldKey);
+        await this.deleteRaw(oldKey);
     }
 
     // -- Head
@@ -142,7 +128,7 @@ export class S3Connection<M extends object = Record<string, string>> {
         return this._client.send(command);
     }
 
-    async getHead(key: string): Promise<ResponseMetadata<M>> {
+    async getHead(key: string): Promise<M> {
         const s3response = await this.getHeadRaw(key);
         return (s3response.Metadata as any) || {};
     }
@@ -168,11 +154,11 @@ export class S3Connection<M extends object = Record<string, string>> {
     async putHead(key: string, metadata: Partial<M>) {
         const currentMetadeata = await this.getHead(key);
         const newMetadata = this._config.mergeMetadata
-            ? this._config.mergeMetadata(currentMetadeata, serializeMetadata(metadata))
-            : metadata;
+            ? this._config.mergeMetadata(currentMetadeata, metadata)
+            : { ...currentMetadeata, ...metadata };
         await this.copyRaw(key, key, {
             MetadataDirective: "REPLACE",
-            Metadata: serializeMetadata(newMetadata),
+            Metadata: newMetadata,
         });
     }
 }
