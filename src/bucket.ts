@@ -2,7 +2,10 @@ import {
     _Object,
     CopyObjectCommand,
     CopyObjectCommandInput,
+    Delete,
     DeleteObjectCommand,
+    DeleteObjectsCommand,
+    DeleteObjectsCommandInput,
     GetObjectCommand,
     GetObjectCommandInput,
     GetObjectCommandOutput,
@@ -40,25 +43,25 @@ export type AWSS3BucketConfig<M extends Metadata = Metadata> = {
 
 @Service({ name: "$$aws_s3_bucket" })
 export class AWSS3Bucket<M extends Metadata = Metadata> {
-    readonly bucketName: string;
-    private _client: S3Client;
+    readonly name: string;
+    readonly client: S3Client;
     private _config: AWSS3BucketConfig<M>;
 
     constructor(bucketName: string, config: AWSS3BucketConfig<M>) {
-        this.bucketName = bucketName;
+        this.name = bucketName;
         this._config = config;
-        this._client = config.client instanceof S3Client ? config.client : new S3Client(config.client);
+        this.client = config.client instanceof S3Client ? config.client : new S3Client(config.client);
     }
 
     // -- Objects
 
     async getRaw(key: string, input?: Partial<GetObjectCommandInput>): Promise<GetObjectCommandOutput> {
         const command = new GetObjectCommand({
-            Bucket: this.bucketName,
+            Bucket: this.name,
             Key: key,
             ...input,
         });
-        const s3response = await this._client.send(command);
+        const s3response = await this.client.send(command);
         return s3response;
     }
 
@@ -75,11 +78,11 @@ export class AWSS3Bucket<M extends Metadata = Metadata> {
 
     async putRaw(key: string, input?: Partial<PutObjectCommandInput>) {
         const command = new PutObjectCommand({
-            Bucket: this.bucketName,
+            Bucket: this.name,
             Key: key,
             ...input,
         });
-        return this._client.send(command);
+        return this.client.send(command);
     }
 
     async put(key: string, data: ObjectData) {
@@ -90,25 +93,34 @@ export class AWSS3Bucket<M extends Metadata = Metadata> {
 
     async deleteRaw(key: string) {
         const command = new DeleteObjectCommand({
-            Bucket: this.bucketName,
+            Bucket: this.name,
             Key: key,
         });
-        return this._client.send(command);
+        return this.client.send(command);
     }
 
-    async delete(key: string) {
-        await this.deleteRaw(key);
+    delete(key: string) {
+        return this.deleteRaw(key);
+    }
+
+    async deleteManyRaw(del: Delete, input: Partial<DeleteObjectsCommandInput> = {}) {
+        const command = new DeleteObjectsCommand({ Bucket: this.name, Delete: del, ...input });
+        return this.client.send(command);
+    }
+
+    deleteMany(keys: string[]) {
+        return this.deleteManyRaw({ Objects: keys.map((k) => ({ Key: k })) });
     }
 
     async copyRaw(oldKey: string, newKey: string, params?: Partial<CopyObjectCommandInput>) {
         const cmd = new CopyObjectCommand({
-            Bucket: this.bucketName,
-            CopySource: `${this.bucketName}/${oldKey}`,
+            Bucket: this.name,
+            CopySource: `${this.name}/${oldKey}`,
             // rename
             Key: newKey,
             ...params,
         });
-        return this._client.send(cmd);
+        return this.client.send(cmd);
     }
 
     async rename(oldKey: string, newKey: string) {
@@ -121,11 +133,11 @@ export class AWSS3Bucket<M extends Metadata = Metadata> {
 
     async getHeadRaw(key: string, input?: Partial<HeadObjectCommandInput>): Promise<HeadObjectCommandOutput> {
         const command = new HeadObjectCommand({
-            Bucket: this.bucketName,
+            Bucket: this.name,
             Key: key,
             ...input,
         });
-        return this._client.send(command);
+        return this.client.send(command);
     }
 
     async getHead(key: string): Promise<M> {
@@ -136,10 +148,10 @@ export class AWSS3Bucket<M extends Metadata = Metadata> {
     async getHeadsRaw(input?: Partial<ListObjectsCommandInput>): Promise<ListObjectsCommandOutput> {
         // max. MaxKeys is 1000
         const command = new ListObjectsCommand({
-            Bucket: this.bucketName,
+            Bucket: this.name,
             ...input,
         });
-        return await this._client.send(command);
+        return await this.client.send(command);
     }
 
     async getHeads(options: FetchHeadsOptions = {}) {

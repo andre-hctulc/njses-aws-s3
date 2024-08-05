@@ -6,7 +6,7 @@ import {
     S3Client,
     S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import { Service } from "../../njses";
+import { Services, Service } from "../../njses";
 import { AWSS3Bucket, AWSS3BucketConfig, Metadata } from "./bucket";
 
 @Service({ name: "$$aws_s3" })
@@ -34,20 +34,18 @@ export class AWSS3Client {
 
     async createBucket<M extends Metadata>(
         bucketName: string,
-        config: Omit<CreateBucketCommandInput, "Bucket">,
-        options?: Omit<AWSS3BucketConfig<M>, "client">
+        params: Omit<CreateBucketCommandInput, "Bucket">,
+        config?: Omit<AWSS3BucketConfig<M>, "client">
     ): Promise<AWSS3Bucket<M>> {
-        const createCommand = new CreateBucketCommand({ ...config, Bucket: bucketName });
+        const createCommand = new CreateBucketCommand({ ...params, Bucket: bucketName });
         await this.raw.send(createCommand);
-        return new AWSS3Bucket<M>(bucketName, {
-            ...(options as AWSS3BucketConfig<any>),
-            client: this.raw,
-        });
+        return this.getBucket(bucketName, config);
     }
 
-    getBucket<M extends Metadata>(bucketName: string): AWSS3Bucket<M> {
-        return new AWSS3Bucket<M>(bucketName, {
-            client: this.raw,
-        });
+    getBucket<M extends Metadata>(
+        bucketName: string,
+        config?: Omit<AWSS3BucketConfig<M>, "client">
+    ): Promise<AWSS3Bucket<M>> {
+        return Services.injectX([AWSS3Bucket<M>, bucketName, { ...config, client: this.raw }]);
     }
 }
