@@ -6,7 +6,7 @@ import {
     S3Client,
     S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import { Services, Service } from "../../njses";
+import { App, Service } from "../../njses";
 import { AWSS3Bucket, AWSS3BucketConfig, Metadata } from "./bucket";
 
 @Service({ name: "$$aws_s3" })
@@ -46,6 +46,6 @@ export class AWSS3Client {
         bucketName: string,
         config?: Omit<AWSS3BucketConfig<M>, "client">
     ): Promise<AWSS3Bucket<M>> {
-        return Services.injectX([AWSS3Bucket<M>, bucketName, { ...config, client: this.raw }]);
+        return App.injectX([AWSS3Bucket<M>, bucketName, { ...config, client: this.raw }]);
     }
 }

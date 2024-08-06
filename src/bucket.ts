@@ -21,7 +21,7 @@ import {
     S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import type { Readable } from "stream";
-import { Service } from "../../njses/src/decorators";
+import { Service } from "../../njses";
 import { blobToReadable, streamToString } from "./utils";
 
 interface FetchHeadsOptions {
